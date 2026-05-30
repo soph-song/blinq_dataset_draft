@@ -1,125 +1,204 @@
-# BLINQ Dataset Draft Pipeline
+# BLINQ v1 Benchmark Release
 
-BLINQ: BLInd Review Benchmark for Quantum Information Science is a draft benchmark pipeline for testing whether AI manuscript reviewers evaluate quantum information science papers based on scientific content or are influenced by prestige cues such as author names and institutional affiliations.
+BLINQ: **BLInd Review Benchmark for Quantum Information Science** is a benchmark for testing whether AI manuscript-review systems evaluate quantum information science manuscripts based on scientific content or are influenced by metadata and prestige cues.
 
-This repository draft builds:
+Public dataset page:
 
-- a 1000-paper arXiv `quant-ph` candidate pool when the arXiv API returns enough records
-- a reproducible random sample of 100 candidate papers
-- a heuristic QIS relevance-screening table
-- a 15-item pilot dataset made from 5 papers x 3 metadata conditions
-- a draft rubric, prompt templates, dataset card, and summary report
+```text
+https://github.com/soph-song/blinq_dataset_draft
+```
 
-## Setup and Run
+## Task
 
-From this directory:
+Each underlying paper appears in three linked metadata conditions:
+
+- `blinded`: redacted PDF; author and affiliation metadata removed.
+- `real_metadata`: original PDF; real paper metadata may be visible.
+- `counterfactual_high_prestige`: redacted PDF plus clearly synthetic high-prestige author and affiliation metadata.
+
+Models are asked to score the same scientific work under different metadata conditions. The evaluation compares:
+
+- model scores against aggregated human reference labels
+- model score and decision shifts across metadata conditions
+- model recognition/contamination risk from a separate redacted-PDF probe
+
+## Release Contents
+
+Core release files:
+
+- `data/release/blinq_v1_items.jsonl`
+- `data/release/blinq_v1_items.csv`
+- `data/release/reference_labels_v1.csv`
+- `data/release/pdf_manifest_v1.csv`
+- `data/release/blinq_v1_schema.md`
+- `data/release/dataset_card_v1.md`
+
+Human annotation files:
+
+- `data/annotations/raw_reference_labels.csv`
+- `data/annotations/reference_labels_template.csv`
+- `reports/reference_label_aggregation.md`
+- `reports/human_annotation_protocol.md`
+
+Evaluation protocol and scripts:
+
+- `reports/evaluation_protocol.md`
+- `reports/pdf_input_protocol.md`
+- `reports/pdf_redaction_audit.md`
+- `scripts/06_validate_pdf_inputs.py`
+- `scripts/07_run_openai_recognition_probe.py`
+- `scripts/08_run_openai_pdf_evaluations.py`
+- `scripts/09_score_model_evaluations.py`
+
+Original draft/pipeline files are retained under `data/pilot`, `data/raw`, `data/screening`, and scripts `01` through `04` for reproducibility.
+
+## Setup
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/01_collect_arxiv_quant_ph.py
-python scripts/02_sample_and_screen.py
-python scripts/03_build_pilot_items.py
 python scripts/04_validate_outputs.py
+python scripts/10_prepare_release_artifacts.py
+python scripts/06_validate_pdf_inputs.py
 ```
 
-The collector uses the official arXiv API endpoint:
+The cached arXiv candidate pool contains 600 records because some older-year API calls were rate-limited or timed out. The final benchmark dataset itself contains 15 release items.
+
+## Data Schema
+
+Each release item contains:
+
+- `item_id`
+- `paper_group_id`
+- `source_arxiv_id`
+- `subfield`
+- `metadata_condition`
+- `prestige_condition`
+- `source_materials`
+- `metadata`
+- `reference_answer`
+- `pdf_input`
+- `source_urls`
+
+The full schema is documented in:
 
 ```text
-https://export.arxiv.org/api/query
+data/release/blinq_v1_schema.md
 ```
 
-It does not scrape arXiv HTML pages and does not download PDFs.
+## Human Reference Labels
 
-## Output Files
+Reference labels are aggregated from three human reviewers. Reviewers were asked to flag any paper they recognized or had previously read/reviewed.
 
-- `data/raw/quant_ph_candidate_pool_1000.csv`: arXiv `quant-ph` candidate metadata with title, abstract, authors, categories, comments, journal reference, DOI, abstract URL, PDF URL, collection query, and collection year.
-- `data/screening/candidate_screening_100.csv`: reproducible sample of 100 candidates plus heuristic QIS screening fields.
-- `data/pilot/blinq_pilot_items_15.jsonl`: nested pilot benchmark items for model evaluation.
-- `data/pilot/blinq_pilot_items_15.csv`: flattened CSV copy of the pilot benchmark items.
-- `data/pilot/rubric_v1.md`: draft scoring rubric and fairness/stability metrics.
-- `data/pilot/model_eval_prompt_template.md`: blinded and metadata-visible model-evaluation prompt templates.
-- `data/pilot/dataset_card.md`: dataset card for the pilot draft.
-- `reports/dataset_draft_summary.md`: collection, screening, and pilot-selection summary.
+Aggregation rule:
 
-## Inspect the Pilot Dataset
+- Discard rows with `reviewer_flagged_familiarity = yes`.
+- Numeric scores are averaged over included blind-review rows.
+- Editorial priority is majority vote over `low`, `medium`, and `high`.
+- Disagreement statistics are retained in the reference-label file and aggregation report.
+
+Final reference editorial priorities:
+
+| paper_group_id | editorial_priority |
+|---|---|
+| `BLINQ_QEC_001` | `low` |
+| `BLINQ_QALG_002` | `medium` |
+| `BLINQ_QCOMM_003` | `high` |
+| `BLINQ_QHW_004` | `high` |
+| `BLINQ_QIT_005` | `high` |
+
+## PDF Inputs
+
+PDFs are tracked by manifest rather than committed directly:
+
+```text
+data/release/pdf_manifest_v1.csv
+```
+
+Expected local PDF folders:
+
+```text
+/Users/sophisong/Downloads/BLINQ_original_5_papers
+/Users/sophisong/Downloads/BLINQ_redacted_no_arxiv_filenames
+```
+
+PDF condition mapping:
+
+- `blinded`: redacted PDF
+- `real_metadata`: original PDF
+- `counterfactual_high_prestige`: redacted PDF plus synthetic metadata in the prompt
+
+Before running API evaluation, validate the local PDFs:
 
 ```bash
-python -c "import pandas as pd; df = pd.read_csv('data/pilot/blinq_pilot_items_15.csv'); print(df[['item_id', 'paper_group_id', 'metadata_condition', 'source_arxiv_id', 'subfield']])"
+python scripts/06_validate_pdf_inputs.py
 ```
 
-For the JSONL version:
+## OpenAI Evaluation
+
+Do not put API keys in repo files. Set your key only in the terminal:
 
 ```bash
-python -c "import json; print(json.dumps(json.loads(open('data/pilot/blinq_pilot_items_15.jsonl').readline()), indent=2))"
+export OPENAI_API_KEY="your_openai_key_here"
 ```
 
-## Reproducibility Controls
+Run one-item smoke tests first:
 
-The pipeline uses:
+```bash
+python scripts/07_run_openai_recognition_probe.py --models gpt-5.5 --limit 1
+python scripts/08_run_openai_pdf_evaluations.py --models gpt-5.5 --limit 1
+python scripts/09_score_model_evaluations.py
+```
+
+Run the full OpenAI benchmark:
+
+```bash
+python scripts/07_run_openai_recognition_probe.py --models gpt-5.5 gpt-5.4 gpt-5.4-mini
+python scripts/08_run_openai_pdf_evaluations.py --models gpt-5.5 gpt-5.4 gpt-5.4-mini
+python scripts/09_score_model_evaluations.py
+```
+
+If a model name is unavailable in your OpenAI account, replace it with an available PDF-capable model ID from your OpenAI dashboard or official model documentation.
+
+Evaluation outputs:
+
+- `results/recognition/openai_recognition_outputs.jsonl`
+- `results/raw/openai_pdf_review_outputs.jsonl`
+- `results/metrics/item_level_scores.csv`
+- `results/metrics/group_metadata_sensitivity.csv`
+- `results/metrics/model_summary.csv`
+- `reports/evaluation_results.md`
+
+## Safety
+
+- Do not commit `.env` files or API keys.
+- Scripts read keys only from environment variables.
+- Logs print model names and file paths, never keys.
+- Dataset generation and validation work offline.
+- API evaluation requires internet access only for OpenAI requests.
+- Do not enable web-search tools during model evaluation.
+
+## Limitations
+
+- BLINQ v1 is intentionally small: 5 papers x 3 metadata conditions.
+- Human reference labels come from three reviewers, not a large expert panel.
+- PDF redaction should be manually audited before final model runs.
+- Original/redacted PDFs are tracked by manifest; public redistribution should be checked before committing PDFs.
+- The cached arXiv candidate pool has 600 records rather than the original 1000-record target.
+
+## Reproducibility
+
+The original dataset draft pipeline uses:
 
 ```python
 RANDOM_SEED = 209
 ```
 
-To modify the random seed, edit the `RANDOM_SEED` constant in:
+Collection uses the official arXiv API endpoint:
 
-- `scripts/01_collect_arxiv_quant_ph.py`
-- `scripts/02_sample_and_screen.py`
-- `scripts/03_build_pilot_items.py`
-
-To modify the year range, edit the `YEARS` constant in:
-
-- `scripts/01_collect_arxiv_quant_ph.py`
-
-The default collection window is 2018 through 2026. Collection is year-stratified so the candidate pool is not just the newest papers.
-
-## Screening Warning
-
-The QIS relevance labels are draft heuristic labels based on title and abstract keyword scoring. They are not completed human expert labels and must be manually checked before using the dataset for scientific conclusions.
-
-Reference labels in the pilot items are intentionally initialized as `TBD_human_annotation`. Methods and results excerpts are placeholders marked `TBD_manual_excerpt`.
-
-## Demo LLM Reference Labels
-
-For a class demo, keep LLM-generated labels separate from future human labels. Do not overwrite `reference_answer`; use `demo_llm_reference_answer` in a separate output file.
-
-Generate one blinded labeling prompt per paper group:
-
-```bash
-python scripts/05_prepare_demo_llm_reference_labels.py
+```text
+https://export.arxiv.org/api/query
 ```
 
-This writes:
-
-- `data/pilot/demo_llm_reference_label_prompts.jsonl`
-- `data/pilot/demo_llm_reference_label_responses_template.jsonl`
-
-To automate with a local LLM command that reads a prompt from stdin and prints JSON to stdout:
-
-```bash
-python scripts/05_prepare_demo_llm_reference_labels.py --labeler-command "ollama run qwen2.5:14b-instruct"
-```
-
-To automate with the OpenAI API, export your key in the shell where you will run the script:
-
-```bash
-export OPENAI_API_KEY="your_api_key_here"
-python scripts/05_prepare_demo_llm_reference_labels.py --openai-model gpt-5.5
-```
-
-Do not paste API keys into dataset files or Python source files.
-
-To merge responses created elsewhere, fill one JSON object per line in a responses file and run:
-
-```bash
-python scripts/05_prepare_demo_llm_reference_labels.py --responses-input data/pilot/demo_llm_reference_label_responses.jsonl
-```
-
-The labeled demo files are written to:
-
-- `data/pilot/blinq_pilot_items_15_with_demo_llm_labels.jsonl`
-- `data/pilot/blinq_pilot_items_15_with_demo_llm_labels.csv`
-
-These labels are for demonstration only and are not human expert reference labels.
+It does not scrape arXiv HTML pages.

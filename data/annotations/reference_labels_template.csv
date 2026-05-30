@@ -1,0 +1,6 @@
+annotator_id,paper_group_id,reviewer_flagged_familiarity,technical_soundness,evidence_support,novelty,significance,clarity,overall_merit,editorial_priority,annotator_confidence,rationale,evidence_spans_or_phrases,notes
+,BLINQ_QEC_001,no,,,,,,,,,,[],
+,BLINQ_QALG_002,no,,,,,,,,,,[],
+,BLINQ_QCOMM_003,no,,,,,,,,,,[],
+,BLINQ_QHW_004,no,,,,,,,,,,[],
+,BLINQ_QIT_005,no,,,,,,,,,,[],

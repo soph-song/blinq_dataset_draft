@@ -1,0 +1,6 @@
+paper_group_id,source_arxiv_id,included_reviewers,discarded_familiarity_flagged,editorial_priority_majority,priority_low_votes,priority_medium_votes,priority_high_votes,priority_disagreement,priority_vote_summary,technical_soundness_mean,technical_soundness_median,technical_soundness_std,evidence_support_mean,evidence_support_median,evidence_support_std,novelty_mean,novelty_median,novelty_std,significance_mean,significance_median,significance_std,clarity_mean,clarity_median,clarity_std,overall_merit_mean,overall_merit_median,overall_merit_std,annotator_confidence_mean
+BLINQ_QEC_001,2501.02513,3,0,low,2,1,0,True,"low:2, medium:1, high:0",2.67,2.0,1.15,2.33,2.0,1.53,1.67,2.0,0.58,2.33,2.0,0.58,3.33,3.0,1.53,2.0,2.0,1.0,4.33
+BLINQ_QALG_002,2301.02637,3,0,medium,0,2,1,True,"low:0, medium:2, high:1",4.0,4.0,1.0,4.0,4.0,1.0,4.0,4.0,0.0,3.33,3.0,0.58,4.33,4.0,0.58,3.67,4.0,0.58,4.33
+BLINQ_QCOMM_003,2401.01727,3,0,high,0,1,2,True,"low:0, medium:1, high:2",4.33,4.0,0.58,4.33,4.0,0.58,3.67,4.0,0.58,3.67,4.0,0.58,4.33,4.0,0.58,4.0,4.0,0.0,4.0
+BLINQ_QHW_004,2501.01185,3,0,high,0,0,3,False,"low:0, medium:0, high:3",4.67,5.0,0.58,4.67,5.0,0.58,3.67,4.0,0.58,4.0,4.0,0.0,4.67,5.0,0.58,4.33,4.0,0.58,4.33
+BLINQ_QIT_005,2401.02817,3,0,high,0,0,3,False,"low:0, medium:0, high:3",4.33,4.0,0.58,4.33,4.0,0.58,5.0,5.0,0.0,4.67,5.0,0.58,4.0,4.0,1.0,4.33,4.0,0.58,4.0
