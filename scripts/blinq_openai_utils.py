@@ -7,6 +7,7 @@ import csv
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,12 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def load_pdf_manifest(path: Path = PDF_MANIFEST) -> list[dict[str, str]]:
@@ -105,6 +112,9 @@ def call_openai_pdf_response(
     pdf_path: Path,
     schema_name: str,
     schema: dict[str, Any],
+    timeout_seconds: int = 600,
+    max_retries: int = 3,
+    retry_sleep_seconds: int = 15,
 ) -> dict[str, Any]:
     pdf_bytes = pdf_path.read_bytes()
     encoded = base64.b64encode(pdf_bytes).decode("ascii")
@@ -136,14 +146,45 @@ def call_openai_pdf_response(
             }
         },
     }
-    response = requests.post(
-        "https://api.openai.com/v1/responses",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=240,
+    last_error: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=timeout_seconds,
+            )
+            if response.status_code in {408, 409, 429} or response.status_code >= 500:
+                last_error = RuntimeError(
+                    f"retryable OpenAI API status {response.status_code}: {response.text[:500]}"
+                )
+                if attempt < max_retries:
+                    print(
+                        f"Retryable OpenAI error for model={model} pdf={pdf_path.name} "
+                        f"attempt={attempt}/{max_retries}; sleeping {retry_sleep_seconds}s"
+                    )
+                    time.sleep(retry_sleep_seconds)
+                    continue
+            response.raise_for_status()
+            return parse_json_response(extract_response_text(response.json()))
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+            if attempt < max_retries:
+                print(
+                    f"Transient OpenAI connection error for model={model} pdf={pdf_path.name} "
+                    f"attempt={attempt}/{max_retries}: {exc}; sleeping {retry_sleep_seconds}s"
+                )
+                time.sleep(retry_sleep_seconds)
+                continue
+            raise RuntimeError(
+                f"OpenAI API request failed after {max_retries} attempts for model={model}, pdf={pdf_path.name}: {exc}"
+            ) from exc
+        except requests.HTTPError as exc:
+            raise RuntimeError(
+                f"OpenAI API request failed for model {model}: HTTP {response.status_code} {response.text}"
+            ) from exc
+
+    raise RuntimeError(
+        f"OpenAI API request failed after {max_retries} attempts for model={model}, pdf={pdf_path.name}: {last_error}"
     )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        raise RuntimeError(f"OpenAI API request failed for model {model}: HTTP {response.status_code} {response.text}") from exc
-    return parse_json_response(extract_response_text(response.json()))

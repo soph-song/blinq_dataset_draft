@@ -10,13 +10,14 @@ from typing import Any
 
 from blinq_openai_utils import (
     RESULTS_DIR,
+    append_jsonl,
     call_openai_pdf_response,
+    load_jsonl,
     load_pdf_manifest,
     load_release_items,
     pdf_path_from_record,
     pdf_record_for,
     require_api_key,
-    write_jsonl,
 )
 
 
@@ -99,6 +100,10 @@ def main() -> None:
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--limit", type=int, help="Limit number of benchmark items per model for smoke tests.")
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
+    parser.add_argument("--timeout-seconds", type=int, default=600)
+    parser.add_argument("--max-retries", type=int, default=3)
+    parser.add_argument("--retry-sleep-seconds", type=int, default=20)
+    parser.add_argument("--restart", action="store_true", help="Delete existing output and start from scratch.")
     args = parser.parse_args()
 
     api_key = require_api_key(args.api_key_env)
@@ -107,9 +112,21 @@ def main() -> None:
     if args.limit:
         items = items[: args.limit]
 
-    rows = []
+    if args.restart and args.output.exists():
+        args.output.unlink()
+
+    existing_rows = load_jsonl(args.output)
+    completed = {(row.get("model"), row.get("item_id")) for row in existing_rows}
+    if existing_rows:
+        print(f"Resuming from {args.output}; found {len(existing_rows)} completed review rows.")
+
+    new_rows = 0
     for model in args.models:
         for item in items:
+            key = (model, item["item_id"])
+            if key in completed:
+                print(f"Skipping completed review eval: model={model} item_id={item['item_id']}")
+                continue
             pdf_condition = item["pdf_input"]["pdf_condition"]
             record = pdf_record_for(manifest, item["paper_group_id"], pdf_condition)
             pdf_path = pdf_path_from_record(record)
@@ -124,8 +141,12 @@ def main() -> None:
                 pdf_path=pdf_path,
                 schema_name="blinq_pdf_review",
                 schema=review_schema(),
+                timeout_seconds=args.timeout_seconds,
+                max_retries=args.max_retries,
+                retry_sleep_seconds=args.retry_sleep_seconds,
             )
-            rows.append(
+            append_jsonl(
+                args.output,
                 {
                     "model": model,
                     "item_id": item["item_id"],
@@ -134,11 +155,14 @@ def main() -> None:
                     "pdf_condition": pdf_condition,
                     "pdf_sha256": record.get("sha256", ""),
                     "response": response,
-                }
+                },
             )
+            completed.add(key)
+            new_rows += 1
 
-    write_jsonl(args.output, rows)
-    print(f"Wrote {len(rows)} review outputs to {args.output}")
+    total_rows = len(load_jsonl(args.output))
+    print(f"Wrote {new_rows} new review outputs to {args.output}")
+    print(f"Total review outputs now: {total_rows}")
 
 
 if __name__ == "__main__":
